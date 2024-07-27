@@ -6,6 +6,7 @@ package webhelper
 
 import (
 	"html/template"
+	"log"
 	"net/http"
 )
 
@@ -44,8 +45,33 @@ type Context struct {
 // This gives access to .Get, .Post to register handlers,
 // also gives access to the templates for Render
 type Server struct {
-	Templates      *template.Template
+	templates      *template.Template
 	currentContext *Context
+	address        string
+	router         *http.ServeMux
+	server         *http.Server
+	middlewares    []Handler
+}
+
+func CreateServer(address string, templates *template.Template) *Server {
+	router := http.NewServeMux()
+	server := &http.Server{
+		Addr:    address,
+		Handler: router,
+	}
+
+	return &Server{
+		templates:   templates,
+		address:     address,
+		router:      router,
+		server:      server,
+		middlewares: make([]Handler, 0, 10),
+	}
+}
+
+func (s *Server) Run() error {
+	log.Printf("server running on %s\n", s.address)
+	return s.server.ListenAndServe()
 }
 
 func (s *Server) handleError(err error) {
@@ -56,8 +82,7 @@ func (s *Server) handleError(err error) {
 		code = myError.Code
 	}
 
-	// :( too little knowledge to know what to do / how to correctly handle this!
-	// so just call Error (others seem to send JSON, I guess that is then used on the client side)
+	// just call Error (others seem to send JSON, I guess that is then used on the client side)
 	s.currentContext.Error(err.Error(), code)
 }
 
@@ -66,29 +91,45 @@ func (s *Server) handleError(err error) {
 // and will process the returned error if any.
 func (s *Server) makeHandler(handler Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// create a Context
 		context := Context{
 			w:         w,
 			r:         r,
-			templates: s.Templates,
+			templates: s.templates,
 		}
-		s.currentContext = &context
 
+		s.currentContext = &context
+		defer func() { s.currentContext = nil }()
+
+		// call middlewares
+		for _, middleware := range s.middlewares {
+			if err := middleware(context); err != nil {
+				s.handleError(err)
+				return
+			}
+		}
+		// call the handler
 		if err := handler(context); err != nil {
 			s.handleError(err)
 		}
 	}
 }
 
+// Add a middleware
+func (s *Server) AddMiddlware(m Handler) {
+	s.middlewares = append(s.middlewares, m)
+}
+
 // Register a GET handler
 func (s *Server) Get(pattern string, handler Handler) {
 	wrappedHandler := s.makeHandler(handler)
-	http.HandleFunc("GET "+pattern, wrappedHandler)
+	s.router.HandleFunc("GET "+pattern, wrappedHandler)
 }
 
 // Register a POST handler
 func (s *Server) Post(pattern string, handler Handler) {
 	wrappedHandler := s.makeHandler(handler)
-	http.HandleFunc("POST "+pattern, wrappedHandler)
+	s.router.HandleFunc("POST "+pattern, wrappedHandler)
 }
 
 //--------
@@ -112,12 +153,20 @@ func (c *Context) FormValue(key string) string {
 	return c.r.FormValue(key)
 }
 
-func (c *Context) Redirect(url string) {
-	c.RedirectWithStatus(url, http.StatusFound)
+func (c *Context) Path() string {
+	return c.r.URL.Path
+}
+
+func (c *Context) Method() string {
+	return c.r.Method
 }
 
 func (c *Context) RedirectWithStatus(url string, status int) {
 	http.Redirect(c.w, c.r, url, status)
+}
+
+func (c *Context) Redirect(url string) {
+	c.RedirectWithStatus(url, http.StatusFound)
 }
 
 func (c *Context) Error(error string, code int) {
