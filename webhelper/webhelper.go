@@ -42,8 +42,8 @@ type Context struct {
 	templates *template.Template
 }
 
-// This gives access to .Get, .Post to register handlers,
-// also gives access to the templates for Render
+// This is the server, create one with CreateServer
+// It is then used to register handlers and 'run' the server
 type Server struct {
 	templates      *template.Template
 	currentContext *Context
@@ -53,6 +53,9 @@ type Server struct {
 	middlewares    []Handler
 }
 
+// Creates a Server.
+// Register handlers with Post, Get ..
+// Call Run to start the server
 func CreateServer(address string, templates *template.Template) *Server {
 	router := http.NewServeMux()
 	server := &http.Server{
@@ -69,6 +72,7 @@ func CreateServer(address string, templates *template.Template) *Server {
 	}
 }
 
+// Starts the server, accepting requests and executing them
 func (s *Server) Run() error {
 	log.Printf("server running on %s\n", s.address)
 	return s.server.ListenAndServe()
@@ -115,7 +119,9 @@ func (s *Server) makeHandler(handler Handler) http.HandlerFunc {
 	}
 }
 
-// Add a middleware
+// Register a middleware function,
+// the regitered mdw functions will be executed before the registered handler.
+// Cen be used for example to log requests etc
 func (s *Server) AddMiddlware(m Handler) {
 	s.middlewares = append(s.middlewares, m)
 }
