@@ -37,8 +37,8 @@ func NewError(code int, message string) Error {
 type Handler func(c Context) error
 
 type Context struct {
-	w         http.ResponseWriter
 	r         *http.Request
+	w         http.ResponseWriter
 	templates *template.Template
 }
 
@@ -46,11 +46,11 @@ type Context struct {
 // It is then used to register handlers and 'run' the server
 type Server struct {
 	templates      *template.Template
-	currentContext *Context
+	currentContext *Context // only valid during a call to Handler
 	address        string
 	router         *http.ServeMux
 	server         *http.Server
-	middlewares    []Handler
+	middlewares    []Handler // these are called before the registerer Handler
 }
 
 // Creates a Server.
@@ -72,7 +72,7 @@ func CreateServer(address string, templates *template.Template) *Server {
 	}
 }
 
-// Starts the server, accepting requests and executing them
+// Starts the server, accepting requests and dispatching them
 func (s *Server) Run() error {
 	log.Printf("server running on %s\n", s.address)
 	return s.server.ListenAndServe()
@@ -121,7 +121,7 @@ func (s *Server) makeHandler(handler Handler) http.HandlerFunc {
 
 // Register a middleware function,
 // the regitered mdw functions will be executed before the registered handler.
-// Cen be used for example to log requests etc
+// Can be used for example to log requests etc
 func (s *Server) AddMiddlware(m Handler) {
 	s.middlewares = append(s.middlewares, m)
 }
@@ -142,8 +142,8 @@ func (s *Server) Post(pattern string, handler Handler) {
 
 // Renders the templates
 func (c *Context) Render(name string, data any) error {
-	if err := c.templates.ExecuteTemplate(c.w, name, data); err != nil {
-		//c.Error(err.Error(), http.StatusInternalServerError)
+	err := c.templates.ExecuteTemplate(c.w, name, data)
+	if err != nil {
 		return NewError(http.StatusInternalServerError, err.Error())
 	}
 	return nil
@@ -173,6 +173,14 @@ func (c *Context) RedirectWithStatus(url string, status int) {
 
 func (c *Context) Redirect(url string) {
 	c.RedirectWithStatus(url, http.StatusFound)
+}
+
+func (c *Context) WriteString(data string) {
+	c.w.Write([]byte(data))
+}
+
+func (c *Context) Write(data []byte) {
+	c.w.Write(data)
 }
 
 func (c *Context) Error(error string, code int) {
