@@ -37,8 +37,8 @@ func NewError(code int, message string) Error {
 type Handler func(c Context) error
 
 type Context struct {
-	r         *http.Request
-	w         http.ResponseWriter
+	R         *http.Request
+	W         http.ResponseWriter
 	templates *template.Template
 }
 
@@ -97,8 +97,8 @@ func (s *Server) makeHandler(handler Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// create a Context
 		context := Context{
-			w:         w,
-			r:         r,
+			W:         w,
+			R:         r,
 			templates: s.templates,
 		}
 
@@ -142,7 +142,7 @@ func (s *Server) Post(pattern string, handler Handler) {
 
 // Renders the templates
 func (c *Context) Render(name string, data any) error {
-	err := c.templates.ExecuteTemplate(c.w, name, data)
+	err := c.templates.ExecuteTemplate(c.W, name, data)
 	if err != nil {
 		return NewError(http.StatusInternalServerError, err.Error())
 	}
@@ -152,23 +152,23 @@ func (c *Context) Render(name string, data any) error {
 // Wrappers around http.Request's PathValue, FormValue etc
 // and http. Redirect, Error
 func (c *Context) PathValue(name string) string {
-	return c.r.PathValue(name)
+	return c.R.PathValue(name)
 }
 
 func (c *Context) FormValue(key string) string {
-	return c.r.FormValue(key)
+	return c.R.FormValue(key)
 }
 
 func (c *Context) Path() string {
-	return c.r.URL.Path
+	return c.R.URL.Path
 }
 
 func (c *Context) Method() string {
-	return c.r.Method
+	return c.R.Method
 }
 
 func (c *Context) RedirectWithStatus(url string, status int) {
-	http.Redirect(c.w, c.r, url, status)
+	http.Redirect(c.W, c.R, url, status)
 }
 
 func (c *Context) Redirect(url string) {
@@ -176,13 +176,13 @@ func (c *Context) Redirect(url string) {
 }
 
 func (c *Context) WriteString(data string) {
-	c.w.Write([]byte(data))
+	c.W.Write([]byte(data))
 }
 
 func (c *Context) Write(data []byte) {
-	c.w.Write(data)
+	c.W.Write(data)
 }
 
 func (c *Context) Error(error string, code int) {
-	http.Error(c.w, error, code)
+	http.Error(c.W, error, code)
 }
